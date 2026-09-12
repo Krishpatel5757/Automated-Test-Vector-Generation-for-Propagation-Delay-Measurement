@@ -227,7 +227,7 @@ if __name__ == "__main__":
 | 2.01E-08 | 7.01E-08 | 7.51E-08 | 9.01E-08 | 2.01E-08 |
 | 2.51E-08 | 8.01E-08 | 9.01E-08 | 1.20E-07 | 2.51E-08 |
 
-*(full export: [`Less.csv`](./Less.csv))*
+*(full export: [`DELAY_CSV.csv`](./DELAY_CSV.csv))*
 
 **Final computed delay table** (`Less_delay.csv`), first few rows:
 
@@ -239,7 +239,7 @@ if __name__ == "__main__":
 | 2.00E-08 | 2.01E-08 | 2.01E-08 | 1.34E-11 | '1010 |
 | 2.50E-08 | 2.51E-08 | 2.51E-08 | 1.41E-11 | '0010 |
 
-*(full result: [`Less_delay.csv`](./Less_delay.csv))*
+*(full result: [`FINAL_OUT_FILE.csv`](./FINAL_OUT_FILE.csv))*
 
 **Reading a row:** the transition into input combination `1001` at t = 5.00ns produces a delay of **13.7 ps**; the following transition into `0001` produces **13.3 ps**. Rows with `delay = 0` mark input transitions that didn't cause an output edge (part of the 0-1-0 bracketing sequence, not a measurement itself) these are expected and simply skipped when reporting the maximum.
 
