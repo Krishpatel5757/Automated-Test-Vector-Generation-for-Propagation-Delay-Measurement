@@ -69,7 +69,7 @@ This flip-and-check process is exactly what the script below automates it's impr
 import numpy as np
 import pandas as pd
 
-TRUTH_TABLE_CSV   = "Magnitude_comparitor.csv"
+TRUTH_TABLE_CSV   = "Magnitude_comparator.csv"
 DELAY_CSV         = "Less.csv"
 STIMULUS_OUT_FILE = "Less_bitstream.txt"
 FINAL_OUT_FILE    = "Less_delay.csv"
