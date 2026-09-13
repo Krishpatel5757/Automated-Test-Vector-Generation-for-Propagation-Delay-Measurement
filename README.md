@@ -244,3 +244,42 @@ if __name__ == "__main__":
 **Reading a row:** the transition into input combination `1001` at t = 5.00ns produces a delay of **13.7 ps**; the following transition into `0001` produces **13.3 ps**. Rows with `delay = 0` mark input transitions that didn't cause an output edge (part of the 0-1-0 bracketing sequence, not a measurement itself) these are expected and simply skipped when reporting the maximum.
 
 The maximum value across the `delay` column is the worst-case propagation delay for this output, printed directly to the console when the script runs.
+
+---
+
+## Scaling to larger circuits
+
+The exhaustive method above works fine at small scale the 2-bit comparator's 3 outputs need only 120 vectors total. It doesn't stay that cheap: a 4-bit multiplier has 8 outputs across 256 input combinations, which the same method turns into ~7260 vectors.
+
+### Critical path analysis
+
+Not every output needs testing. In a 4-bit Vedic multiplier, the low-order product bits pass through only a few gates and structurally can't produce the worst-case delay, so they're excluded outright. The MSB (P7) passes through the most gates and is the primary candidate; P6 was tested too as a safety check, but it consistently showed a lower delay, so only P7 was kept for further analysis.
+
+| Stage | Outputs tested | Vectors |
+|---|---|---|
+| All outputs (naive) | 8 | ~7260 |
+| Critical-path candidates (P7 + P6 safety check) | 2 | 1164 |
+| Final (P7 only, once P6 confirmed non-critical) | 1 | 360 |
+
+That's roughly a 7× reduction, and once confirmed, only P7's 360 vectors are needed for any further analysis on this circuit.
+
+### Logic optimization
+
+Some single outputs still generate too many vectors on their own. An 8-bit ripple-carry adder has 9 outputs across 65,536 input combinations; critical-path analysis narrows this to two outputs S7 and Cout, since the carry chain guarantees the worst-case delay lands at the final stage. (Whether S7 or Cout is worse depends on whether the adder uses standard logic or pass-transistor logic.)
+
+Even narrowed to two outputs, exhaustively flipping every bit still produces a large number of vectors:
+
+| Stage | S7 vectors | Cout vectors | Total |
+|---|---|---|---|
+| Critical-path outputs, full flip | 391,680 | 195,072 | 586,752 |
+| Logic-optimized (flip A0/B0 only) | 1,536 | 768 | 2,304 |
+
+Since the carry chain is longest only when it has to propagate all the way from LSB to MSB, flipping just the LSB input bits (A0, B0) is enough to generate that worst-case chain no other bit pair produces a longer path. Restricting the flip set this way gives the ~256× reduction above. It could likely be pushed further, but that needs simulation to confirm rather than being assumed from the logic alone.
+
+> **Note:** both optimizations above are structure-specific, not general rules they depend on the topology and technology (CMOS, FinFET, CNFET) in use:
+> - Some multiplier designs have their critical path in the middle rather than at the MSB — don't assume the MSB is always worst-case.
+> - Carry-look-ahead adders don't have a serial carry chain, so the "flip only the LSB" trick above doesn't apply — it's specific to ripple-carry structures.
+> - Some adder architectures generate sum before carry, or vice versa, at the transistor level — don't assume the generation order.
+>
+> Always verify with one or two manual test cases whenever the circuit, topology, or code/conditions change.
+
