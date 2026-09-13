@@ -203,7 +203,7 @@ def analyze_delay(p_matrix):
 if __name__ == "__main__":
     _, p_matrix = generate_bitstream()
     print(f"\nStimulus written to '{STIMULUS_OUT_FILE}'.")
-    print("Apply this stimulus in the external simulator (Cadence),")
+    print("Apply this stimulus in the external simulator ,")
     print(f"then place the resulting CSV as '{DELAY_CSV}' in this folder.")
     input("\nPress Enter once the simulation is done and the CSV is ready...")
     analyze_delay(p_matrix)
