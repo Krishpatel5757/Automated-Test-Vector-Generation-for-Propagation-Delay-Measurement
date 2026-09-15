@@ -328,10 +328,8 @@ for A in range(2 ** N_ADD):
         total = A + B
 
 
-        # LSB carry generation
         lsb_generate = (A & 1) == 1 and (B & 1) == 1
 
-        # Carry propagation through bits 1..6
         propagate = all(
             ((A >> i) & 1) ^ ((B >> i) & 1)
             for i in range(1, N_ADD)
