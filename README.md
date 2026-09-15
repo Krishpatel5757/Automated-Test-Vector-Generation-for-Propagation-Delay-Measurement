@@ -283,3 +283,189 @@ Since the carry chain is longest only when it has to propagate all the way from 
 >
 > Always verify with one or two manual test cases whenever the circuit, topology, or code/conditions change.
 
+## Cascading multiple modules (MAC: multiplier + adder)
+
+Why cascading breaks the single-module assumption
+
+A cascaded module (e.g. a MAC's combinational path 4-bit multiplier feeding into an 8-bit RCA) doesn't follow one shared truth table, and the critical path shifts: it now has to pass through both modules at once, not just one.
+
+The easy fallback is to measure each module's delay separately and add them this gives a valid upper bound, since the true cascaded delay can't exceed it. But it isn't tight: the RCA starts consuming the multiplier's output bits (LSB first) as soon as they're produced, so by the time the multiplier's MSB (P7) finally resolves, most of the adder chain has already settled. The actual worst-case delay is smaller than the naive sum.
+
+Vector generation strategy
+
+The same single-bit-flip, 0-1-0/1-0-1 patterning rule still applies, but now a candidate vector has to satisfy the critical condition of both modules at once, not just one.
+
+Approach:
+
+Build the adder's critical-case set first (LSB carry-generate + full propagate through the rest of the chain).
+Build the multiplier's critical-case set, keeping only cases whose product lands in the adder's critical-operand set from step 1.
+Derive the adder's second operand arithmetically instead of searching for it: target sum = 256, so the second leg = 256 − multiplier_output.
+
+The key simplification: the multiplier's critical case (worst-case delay) almost always drives P7 (its MSB) to 1, i.e. product > 128. Rather than separately hunting for a transition that produces the adder's critical sum pattern and its critical carry pattern, forcing P7's transition to 1 → 0 turns out to generate the needed 1-0-1 pattern for both the sum and carry critical cases simultaneously, so one vector set serves both, instead of building two.
+
+The adder's held-input value (before/after the multiplier's own transition) is set to either 0 or 128 depending on whether that intermediate multiplier output crosses 128, again derived directly rather than searched for.
+
+
+<details> <summary><b>Code</b> — critical-vector generation for cascaded MAC (multiplier + adder)</summary>
+python
+    
+```
+
+N_ADD = 8
+N_MUL = 4
+
+
+def to_bits(value, width):
+    return [(value >> i) & 1 for i in range(width - 1, -1, -1)]
+
+
+critical_adder_cases = []
+critical_adder_operands = set()
+
+for A in range(2 ** N_ADD):
+    for B in range(2 ** N_ADD):
+
+        total = A + B
+
+
+        # LSB carry generation
+        lsb_generate = (A & 1) == 1 and (B & 1) == 1
+
+        # Carry propagation through bits 1..6
+        propagate = all(
+            ((A >> i) & 1) ^ ((B >> i) & 1)
+            for i in range(1, N_ADD)
+        )
+
+        if lsb_generate and propagate:
+
+            A_bits = to_bits(A, N_ADD)
+            B_bits = to_bits(B, N_ADD)
+
+            S_bits = to_bits(total, N_ADD)
+
+            critical_adder_cases.append({
+                "A": A,
+                "B": B,
+                "sum": total,
+                "A_bits": A_bits,
+                "B_bits": B_bits,
+                "S_bits": S_bits
+            })
+            critical_adder_operands.add(B)
+
+
+critical_multiplier_cases = []
+
+for A in range(2 ** N_MUL):
+    for B in range(2 ** N_MUL):
+
+        product = A * B
+        p_bits = to_bits(product,(2*N_MUL))
+        
+        if p_bits[0] == 1 and product in critical_adder_operands:
+        # Toggle multiplier LSB
+            A_prev = A ^ 1
+            B_prev = B ^ 1
+       
+            critical_multiplier_cases.append({
+                "A": A,
+                "B": B,
+                "product": product,
+                "A_prev": A_prev,
+                "B_prev": B_prev,
+                "adder_value": (2 ** N_ADD) - product
+            })
+
+
+
+data_mul = []
+data_adder = []
+
+for case in critical_multiplier_cases:
+
+    A = case["A"]
+    B = case["B"]
+
+    A_prev = case["A_prev"]
+    B_prev = case["B_prev"]
+
+    product = case["product"]
+    adder_value = case["adder_value"]
+
+    # Convert multiplier inputs to bits
+    A_bits = to_bits(A, N_MUL)
+    B_bits = to_bits(B, N_MUL)
+
+    A_prev_bits = to_bits(A_prev, N_MUL)
+    B_prev_bits = to_bits(B_prev, N_MUL)
+
+    data_mul.append(A_prev_bits + B_bits)
+    data_mul.append(A_bits + B_bits)
+    data_mul.append(A_prev_bits + B_bits)
+
+    data_mul.append(A_bits + B_prev_bits)
+    data_mul.append(A_bits + B_bits)
+    data_mul.append(A_bits + B_prev_bits)
+
+    adder_bits = to_bits(adder_value, N_ADD)
+
+    # A0 changed
+    product_A0 = A_prev * B
+
+    if product_A0 > 128:
+        previous_adder = [0] * (2 * N_MUL)
+    else:
+        previous_adder = [1, 0, 0, 0, 0, 0, 0, 0]
+
+    data_adder.append(previous_adder)
+    data_adder.append(adder_bits)
+    data_adder.append(previous_adder)
+
+    # B0 changed
+    product_B0 = A * B_prev
+
+    if product_B0 > 128:
+        next_adder = [0] * (2 * N_MUL)
+    else:
+        next_adder = [1, 0, 0, 0, 0, 0, 0, 0]
+
+    data_adder.append(next_adder)
+    data_adder.append(adder_bits)
+    data_adder.append(next_adder)
+
+def print_vectors(data, name="list"):
+
+    columns = list(zip(*data))
+
+    for i, column in enumerate(columns):
+        pattern = ''.join(map(str, column))
+        print(f"{name}_{i} = {pattern}")
+
+
+print("\nCritical multiplier cases:")
+for case in critical_multiplier_cases:
+    print(
+        f"A={case['A']:2d}, "
+        f"B={case['B']:2d}, "
+        f"P={case['product']:3d}, "
+        f"Q={case['adder_value']:3d}"
+    )
+
+print("\nNumber of critical multiplier cases:",
+      len(critical_multiplier_cases))
+
+print("\nNumber of generated vectors:",
+      len(data_mul))
+
+print("\nMultiplier input vectors:")
+print_vectors(data_mul)
+
+print("\nAdder input vectors:")
+print_vectors(data_adder)
+```
+
+</details>
+
+
+The reduction comes from two things stacking: only keeping multiplier cases whose product already matches one of the adder's critical operands, and deriving the adder's second leg arithmetically instead of generating it separately, so the module boundary is handled without a combinatorial blow-up.
